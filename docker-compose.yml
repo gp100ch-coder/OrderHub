@@ -1,0 +1,205 @@
+version: '3.8'
+
+services:
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: orderhub-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - orderhub-network
+
+  # Apache Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: orderhub-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    networks:
+      - orderhub-network
+
+  # PostgreSQL for Order Service
+  postgres-order:
+    image: postgres:15-alpine
+    container_name: orderhub-postgres-order
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: orderhub
+      POSTGRES_PASSWORD: orderhub_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-order-data:/var/lib/postgresql/data
+    networks:
+      - orderhub-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderhub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL for Inventory Service
+  postgres-inventory:
+    image: postgres:15-alpine
+    container_name: orderhub-postgres-inventory
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: orderhub
+      POSTGRES_PASSWORD: orderhub_secret
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-inventory-data:/var/lib/postgresql/data
+    networks:
+      - orderhub-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderhub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL for Payment Service
+  postgres-payment:
+    image: postgres:15-alpine
+    container_name: orderhub-postgres-payment
+    environment:
+      POSTGRES_DB: payments
+      POSTGRES_USER: orderhub
+      POSTGRES_PASSWORD: orderhub_secret
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-payment-data:/var/lib/postgresql/data
+    networks:
+      - orderhub-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderhub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and idempotency
+  redis:
+    image: redis:7-alpine
+    container_name: orderhub-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - orderhub-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Order Service
+  order-service:
+    build:
+      context: .
+      dockerfile: services/order/Dockerfile
+    container_name: orderhub-order-service
+    depends_on:
+      postgres-order:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=development
+      - LOG_LEVEL=debug
+      - SERVER_PORT=8080
+      - DB_HOST=postgres-order
+      - DB_PORT=5432
+      - DB_NAME=orders
+      - DB_USER=orderhub
+      - DB_PASSWORD=orderhub_secret
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=kafka:29092
+      - INVENTORY_SERVICE_ADDRESS=inventory-service:9001
+      - PAYMENT_SERVICE_ADDRESS=payment-service:9002
+    networks:
+      - orderhub-network
+
+  # Inventory Service
+  inventory-service:
+    build:
+      context: .
+      dockerfile: services/inventory/Dockerfile
+    container_name: orderhub-inventory-service
+    depends_on:
+      postgres-inventory:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    ports:
+      - "8081:8081"
+      - "9001:9001"
+    environment:
+      - APP_ENV=development
+      - LOG_LEVEL=debug
+      - SERVER_PORT=8081
+      - GRPC_PORT=9001
+      - DB_HOST=postgres-inventory
+      - DB_PORT=5432
+      - DB_NAME=inventory
+      - DB_USER=orderhub
+      - DB_PASSWORD=orderhub_secret
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=kafka:29092
+      - KAFKA_CONSUMER_GROUP=inventory-service
+    networks:
+      - orderhub-network
+
+  # Payment Service
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment/Dockerfile
+    container_name: orderhub-payment-service
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+      - "9002:9002"
+    environment:
+      - APP_ENV=development
+      - LOG_LEVEL=debug
+      - SERVER_PORT=8082
+      - GRPC_PORT=9002
+    networks:
+      - orderhub-network
+
+networks:
+  orderhub-network:
+    driver: bridge
+
+volumes:
+  postgres-order-data:
+  postgres-inventory-data:
+  postgres-payment-data:
+  redis-data:
