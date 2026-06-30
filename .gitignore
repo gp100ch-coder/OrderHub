@@ -1,0 +1,29 @@
+```
+# Compiled/Generated files
+*.pb.go
+*_grpc.pb.go
+
+# Dependencies
+vendor/
+
+# Build artifacts
+bin/
+dist/
+build/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```

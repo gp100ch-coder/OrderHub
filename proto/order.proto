@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "github.com/orderhub/proto/pb";
+
+// Inventory Service
+service InventoryService {
+  rpc ReserveStock(ReserveStockRequest) returns (ReserveStockResponse);
+  rpc ReleaseStock(ReleaseStockRequest) returns (ReleaseStockResponse);
+  rpc ConfirmStock(ConfirmStockRequest) returns (ConfirmStockResponse);
+  rpc GetStock(GetStockRequest) returns (GetStockResponse);
+}
+
+message StockItem {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message ReserveStockRequest {
+  string order_id = 1;
+  repeated StockItem items = 2;
+}
+
+message ReserveStockResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ReleaseStockRequest {
+  string order_id = 1;
+}
+
+message ReleaseStockResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ConfirmStockRequest {
+  string order_id = 1;
+}
+
+message ConfirmStockResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetStockRequest {
+  string product_id = 1;
+}
+
+message GetStockResponse {
+  string product_id = 1;
+  int32 available = 2;
+  int32 reserved = 3;
+  int32 total = 4;
+}
+
+// Payment Service
+service PaymentService {
+  rpc ProcessPayment(ProcessPaymentRequest) returns (ProcessPaymentResponse);
+  rpc RefundPayment(RefundPaymentRequest) returns (RefundPaymentResponse);
+  rpc GetPaymentStatus(GetPaymentStatusRequest) returns (GetPaymentStatusResponse);
+}
+
+message ProcessPaymentRequest {
+  string order_id = 1;
+  string user_id = 2;
+  int64 amount = 3;
+  string idempotency_key = 4;
+}
+
+message ProcessPaymentResponse {
+  bool success = 1;
+  string message = 2;
+  string payment_id = 3;
+}
+
+message RefundPaymentRequest {
+  string order_id = 1;
+  int64 amount = 2;
+}
+
+message RefundPaymentResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetPaymentStatusRequest {
+  string order_id = 1;
+}
+
+message GetPaymentStatusResponse {
+  bool found = 1;
+  string payment_id = 2;
+  string status = 3;
+  int64 amount = 4;
+  int64 refund_amount = 5;
+}
